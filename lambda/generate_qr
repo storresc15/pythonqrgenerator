@@ -1,0 +1,38 @@
+import json
+import qrcode
+import tempfile
+import os
+import boto3
+
+s3 = boto3.client('s3')
+
+def generate_qr(event, context):
+    # Retrieve URL from the event
+    body = json.loads(event['body'])
+    url = body['url']
+
+    # Generate QR code
+    img = qrcode.make(url)
+
+    # Save QR code to a temporary file
+    with tempfile.NamedTemporaryFile(suffix='.png') as tmp_file:
+        img.save(tmp_file.name)
+
+        # Upload QR code to S3
+        bucket_name = os.environ['BUCKET_NAME']
+        folder_name = 'qr_codes'  # Specify the desired folder name
+        key = f'{folder_name}/qr_code.png'  # Set the folder path as part of the object key
+        s3.upload_file(tmp_file.name, bucket_name, key)
+
+    # Generate pre-signed URL
+    s3_presigned_url = s3.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': bucket_name, 'Key': key},
+        ExpiresIn=3600  # URL expiration time in seconds
+    )
+
+    # Return response with pre-signed URL
+    return {
+        'statusCode': 200,
+        'body': json.dumps({'message': 'QR code generated successfully', 'url': s3_presigned_url})
+    }
